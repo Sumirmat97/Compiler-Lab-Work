@@ -1,6 +1,6 @@
 //Name: Sumir Mathur
 //Id: 2015KUCP1017
-//Find FIRST and FOLLOW of the grammar given in file input.txt
+//check if the given input string is acceptable to predictive parsers
 
 /* ~ represents epsilon and the first rule of grammar is for start symbol */
 
@@ -12,6 +12,7 @@ map<string,vector<string> > productions;
 map<string,set<char> > firsts; //contains set of FIRST of all symbols
 map<string,set<char> > follows; //contains set of FOLLOW of all symbols
 vector<string> visited;
+map<pair<char,char> ,string > predictiveParsingTable;
 
 set<char> first(string symbol, vector<string> prods)
 {
@@ -95,7 +96,7 @@ set<char> first(string symbol, vector<string> prods)
                     Lhs += tempProds[k][l];
                     it = productions.find(Lhs);
                     s = first(Lhs,it->second);
-                    firsts[Lhs] = s; //insert the first of the symbol and mark it visited
+                    firsts[Lhs] = s; //insert the first of the symbol
 
                     it2 = s.find('~');
                     if(it2 == s.end())
@@ -133,27 +134,8 @@ void First()
         {
             temp = first(it1->first,it1->second);
             firsts[it1->first] = temp;
-
         }
     }
-
-    set<char>::iterator it3;
-
-    cout<<"Firsts:\n";
-    for(it2=firsts.begin(); it2!=firsts.end(); it2++)
-    {
-        cout<<it2->first<<" - (";
-        for(it3=it2->second.begin(); it3!=it2->second.end(); it3++)
-        {
-            if(it3 != it2->second.begin()) cout<<", ";
-            if(*it3 == '~')
-                cout<<"NULL";
-            else
-                cout<<*it3;
-        }
-        cout<<")"<<endl;
-    }
-    cout<<endl;
 }
 
 set<char> follow(string symbol)
@@ -257,36 +239,204 @@ void Follow()
             temp = follow(it1->first);
         }
     }
+}
 
-    set<char>::iterator it3;
-
-    cout<<"Follows:\n";
-    for(it2=follows.begin(); it2!=follows.end(); it2++)
+set<char> firstOfString(string alpha)
+{
+    set<char> firstSet;
+    map<string, set<char> >::iterator it1;
+    int k=0;
+    for(k=0; k<alpha.length(); k++)
     {
-        cout<<it2->first<<" - (";
-        for(it3=it2->second.begin(); it3!=it2->second.end(); it3++)
+        set<char> temp;
+        set<char>::iterator it2;
+        if(isupper(alpha[k]))
         {
-            if(it3 != it2->second.begin()) cout<<", ";
-            if(*it3 == '~')
-                cout<<"NULL";
+            it1 = firsts.find(string(1, alpha[k]));
+            if(it1 != firsts.end())
+                temp = it1->second;
+
+            it2 = temp.find('~');
+            if(it2 != temp.end())
+            {
+                temp.erase(it2);
+                firstSet.insert(temp.begin(),temp.end());
+            }
             else
-                cout<<*it3;
+            {
+                firstSet.insert(temp.begin(),temp.end());
+                break;
+            }
         }
-        cout<<")"<<endl;
+        else
+        {
+            firstSet.insert(alpha[k]);
+            break;
+        }
     }
+    if(k == alpha.length())
+        firstSet.insert('~');
+
+    return firstSet;
+}
+int insertIntoTable(string symbol, string prod, set<char> first)
+{
+    string str =  symbol + ":" + prod;
+    set<char>::iterator it;
+    int foundEpsilon = 0;
+    int foundEndMarker = 0; //end marker is $
+
+    it = first.find('~');
+    if(it != first.end())
+    {
+        first.erase(it);
+        foundEpsilon = 1;
+    }
+
+    for(it=first.begin(); it!=first.end(); it++)
+    {
+        pair<char,char > p = make_pair(symbol[0],*it);
+        if(predictiveParsingTable.find(p) != predictiveParsingTable.end() && str!=predictiveParsingTable.find(p)->second)
+        {
+            return 0;
+        }
+        else
+            predictiveParsingTable[p] = str;
+    }
+
+    if(foundEpsilon)
+    {
+        set<char> follow = follows.find(symbol)->second;
+
+        it = follow.find('$');
+        if(it != follow.end())
+        {
+            follow.erase(it);
+            foundEndMarker = 1;
+        }
+
+        str = symbol + ":" + "~";
+        for(it=follow.begin(); it!=follow.end(); it++)
+        {
+            pair<char,char > p = make_pair(symbol[0],*it);
+            if(predictiveParsingTable.find(p) != predictiveParsingTable.end() && str!=predictiveParsingTable.find(p)->second)
+            {
+                return 0;
+            }
+            else
+                predictiveParsingTable[p] = str;
+        }
+    }
+
+    if(foundEpsilon && foundEndMarker)
+    {
+        str = symbol + ":" + prod;
+        pair<char,char > p = make_pair(symbol[0],'$');
+        if(predictiveParsingTable.find(p) != predictiveParsingTable.end() && str!=predictiveParsingTable.find(p)->second)
+        {
+            return 0;
+        }
+        else
+            predictiveParsingTable[p] = str;
+    }
+
+    return 1;
+}
+
+bool constructPredictiveParsingTable()
+{
+	map<string,vector<string> >::iterator it1;
+
+    for(it1=productions.begin(); it1!=productions.end(); it1++)
+    {
+        set<char>::iterator it2;
+
+        string A = it1->first;
+        for(int k =0; k<it1->second.size(); k++)
+        {
+            set<char> temp;
+            string alpha = it1->second[k];
+            temp = firstOfString(alpha);
+            int done = insertIntoTable(A,alpha,temp);
+            if(!done)
+            {
+                return false;
+            }
+        }
+    }
+    if(it1 == productions.end())
+        return true;
+}
+
+bool isAcceptable(string input)
+{
+    int k=0;
+    map<pair<char,char> ,string >::iterator it;
+    stack<char> stck;
+    stck.push('$');
+    stck.push(startSymbol[0]);
+
+    while(k<input.length())
+    {
+        char top = stck.top();
+
+        if(top>=65 && top<=90)
+        {
+            pair<char,char> p = make_pair(top,input[k]);
+
+            it = predictiveParsingTable.find(p);
+            if(it != predictiveParsingTable.end())
+            {
+                stck.pop();
+
+                string str = it->second;
+                int pos1 = str.find(":");
+                string prod = str.substr(pos1+1);
+                if(prod == "~")
+                {
+                    continue; //
+                }
+
+                for(int l=prod.length()-1; l>=0; l--)
+                {
+                    stck.push(prod[l]);
+                }
+            }
+            else
+                return false;
+        }
+        else
+        {
+            if(top == input[k])
+            {
+                stck.pop();
+                k++;
+            }
+            else
+                return false;
+        }
+    }
+
+    return true;
 }
 
 int main()
 {
-    FILE* file = freopen("input.txt","r",stdin);
+    FILE* file = freopen("inputAcceptability1.txt","r",stdin);
     int i=0;
+    int noOfProductionRules;
+    int noOfInputStrings;
+    bool acceptable = false;
+
     string arr[10];
+    vector<string> inputStrings;
 
 	map<string,vector<string> >::iterator it;
+    cin>>noOfProductionRules;
 
-    while(cin>>arr[i])
+    while(noOfProductionRules--)
     {
-
+        cin>>arr[i];
 		string symbol;
 		vector<string> temp;
 
@@ -322,6 +472,16 @@ int main()
 
         i++;
 	}
+
+	i=0;
+	cin>>noOfInputStrings;
+	string str;
+	while(noOfInputStrings--)
+    {
+        cin>>str;
+        inputStrings.push_back(str);
+    }
+
     cout<<"The grammar is:\n";
 
     for(it=productions.begin(); it!=productions.end(); it++)
@@ -342,8 +502,24 @@ int main()
 
 	First();
     Follow();
+    bool done = constructPredictiveParsingTable();
 
+    if(done)
+    {
+        for(i=0; i<inputStrings.size(); i++)
+        {
+            if(isAcceptable(inputStrings[i]))
+                cout<<"The string "<<inputStrings[i]<<" is acceptable\n";
+            else
+                cout<<"The string "<<inputStrings[i]<<" is not acceptable\n";
+        }
+    }
+    else
+    {
+        cout<<"The grammar is not LL1"<<endl;
+    }
     fclose(file);
     return 0;
 }
+
 
