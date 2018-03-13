@@ -1,0 +1,9 @@
+1
+A->A+A|A*A|A%A|A/A|A^A|a
+6
+a*a/a+a%a$
++a$
+a^a$
+a+$
+a+a+a$
+a/a
